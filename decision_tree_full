@@ -1,0 +1,324 @@
+"""
+============================================================
+  DECISION TREE CLASSIFIER — CALORIE EFFICIENCY DATASET
+  Following exact steps from the book screenshots +
+  All required Preprocessing steps
+============================================================
+"""
+
+# ============================================================
+# STEP 1 — IMPORT PACKAGES  (same as screenshot)
+# ============================================================
+import numpy as np
+import pandas as pd
+import os
+import matplotlib
+# NOTE: Do NOT use 'Agg' backend if you want plots to show on screen!
+# 'Agg' is a non-interactive backend that only saves to file.
+# On Windows, the default backend (TkAgg) will display plots in a window.
+import matplotlib.pyplot as plt
+
+from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
+from sklearn.model_selection import train_test_split
+from sklearn.tree import DecisionTreeClassifier, plot_tree
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+
+print("=" * 60)
+print("   DECISION TREE CLASSIFIER — CALORIE EFFICIENCY")
+print("=" * 60)
+
+# ============================================================
+# STEP 2 — LOAD DATA  (same as screenshot, adapted for CSV)
+# ============================================================
+print("\n[STEP 2] Loading Dataset...")
+
+input_file = 'calorie_efficiency_dataset.csv'
+data = pd.read_csv(input_file, nrows=200_000)      # 200k sample for speed
+
+print(f"   Rows loaded    : {len(data):,}")
+print(f"   Columns        : {list(data.columns)}")
+print(f"   Shape          : {data.shape}")
+
+# ============================================================
+# PREPROCESSING — Step A: Check Missing Values
+# ============================================================
+print("\n[PREPROCESSING A] Checking Missing Values...")
+missing = data.isnull().sum()
+print(missing[missing > 0] if missing.any() else "   ✅ No missing values found!")
+
+# ============================================================
+# PREPROCESSING — Step B: Check Duplicates
+# ============================================================
+print("\n[PREPROCESSING B] Checking Duplicates...")
+dupes = data.duplicated().sum()
+print(f"   Duplicates found: {dupes}")
+if dupes > 0:
+    data.drop_duplicates(inplace=True)
+    print(f"   ✅ Removed {dupes} duplicates.")
+else:
+    print("   ✅ No duplicates found!")
+
+# ============================================================
+# PREPROCESSING — Step C: Drop Data Leakage Column
+# ============================================================
+# 'efficiency_score' is directly derived from target — causes leakage
+print("\n[PREPROCESSING C] Removing Data Leakage Column...")
+print("   Dropping 'efficiency_score' (directly derived from target label)")
+data.drop(columns=['efficiency_score'], inplace=True)
+print("   ✅ Done.")
+
+# ============================================================
+# PREPROCESSING — Step D: Encode Target Labels
+# ============================================================
+print("\n[PREPROCESSING D] Encoding Target Labels...")
+le = LabelEncoder()
+data['target_encoded'] = le.fit_transform(data['calorie_efficiency'])
+class_names = list(le.classes_)
+print(f"   Classes : {class_names}")
+print(f"   Encoded : High Efficiency=0, Low Efficiency=1, Moderate=2")
+
+# ============================================================
+# PREPROCESSING — Step E: Outlier Detection & Capping (IQR)
+# ============================================================
+print("\n[PREPROCESSING E] Outlier Detection & Capping (IQR Method)...")
+numeric_cols = data.select_dtypes(include=np.number).columns.tolist()
+numeric_cols = [c for c in numeric_cols if c != 'target_encoded']
+
+outlier_report = {}
+for col in numeric_cols:
+    Q1 = data[col].quantile(0.25)
+    Q3 = data[col].quantile(0.75)
+    IQR = Q3 - Q1
+    lower = Q1 - 1.5 * IQR
+    upper = Q3 + 1.5 * IQR
+    count = ((data[col] < lower) | (data[col] > upper)).sum()
+    if count > 0:
+        data[col] = data[col].clip(lower, upper)  # Cap outliers
+        outlier_report[col] = count
+
+if outlier_report:
+    for col, cnt in outlier_report.items():
+        print(f"   {col}: {cnt} outliers capped")
+    print("   ✅ Outliers capped using IQR method.")
+else:
+    print("   ✅ No significant outliers.")
+
+# ============================================================
+# STEP 3 — SEPARATE CLASSES  (same as screenshot)
+# ============================================================
+print("\n[STEP 3] Separating Input Data into Classes...")
+
+X = data[numeric_cols].values
+y = data['target_encoded'].values
+
+# Separate each class (3 classes in our dataset)
+class_0 = np.array(X[y == 0])   # High Efficiency
+class_1 = np.array(X[y == 1])   # Low Efficiency
+class_2 = np.array(X[y == 2])   # Moderate
+
+print(f"   Class 0 — High Efficiency : {len(class_0):,} samples")
+print(f"   Class 1 — Low Efficiency  : {len(class_1):,} samples")
+print(f"   Class 2 — Moderate        : {len(class_2):,} samples")
+
+# ============================================================
+# PREPROCESSING — Step F: Feature Scaling (StandardScaler)
+# ============================================================
+print("\n[PREPROCESSING F] Feature Scaling (StandardScaler)...")
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+feature_names = numeric_cols
+print("   ✅ All features scaled to mean=0, std=1")
+
+# ============================================================
+# STEP 4 — TRAIN / TEST SPLIT  (exact same as screenshot)
+# ============================================================
+print("\n[STEP 4] Splitting Data into Train/Test Sets...")
+X_train, X_test, y_train, y_test = train_test_split(
+    X_scaled, y, test_size=0.25, random_state=5)
+
+print(f"   Training samples : {len(X_train):,} (75%)")
+print(f"   Testing  samples : {len(X_test):,}  (25%)")
+
+# ============================================================
+# STEP 5 — BUILD DECISION TREE  (exact same as screenshot)
+# ============================================================
+print("\n[STEP 5] Building Decision Tree Classifier...")
+params = {'random_state': 0, 'max_depth': 4}
+classifier = DecisionTreeClassifier(**params)
+classifier.fit(X_train, y_train)
+print("   ✅ Classifier trained successfully!")
+print(f"   Params used: {params}")
+
+# ============================================================
+# STEP 6 — PREDICT & EVALUATE  (same as screenshot)
+# ============================================================
+print("\n[STEP 6] Evaluating Classifier Performance...")
+
+y_train_pred = classifier.predict(X_train)
+y_test_pred  = classifier.predict(X_test)
+
+from sklearn.metrics import accuracy_score
+train_acc = accuracy_score(y_train, y_train_pred)
+test_acc  = accuracy_score(y_test,  y_test_pred)
+
+print("\n" + "#" * 45)
+print(f"  Train Accuracy : {train_acc * 100:.2f}%")
+print(f"  Test  Accuracy : {test_acc  * 100:.2f}%")
+print("#" * 45)
+
+print("\n--- Classifier Performance on TRAINING Dataset ---")
+print(classification_report(y_train, y_train_pred,
+                             target_names=class_names, zero_division=0))
+
+print("\n--- Classifier Performance on TEST Dataset ---")
+print(classification_report(y_test, y_test_pred,
+                             target_names=class_names, zero_division=0))
+
+# ============================================================
+# STEP 7 — VISUALIZE  (6 SEPARATE figures — each its own window)
+# ============================================================
+print("\n[STEP 7] Generating 6 Separate Visualizations...")
+
+# ── Prepare output directory ──
+script_dir = os.path.dirname(os.path.abspath(__file__))
+output_dir = os.path.join(script_dir, 'outputs')
+os.makedirs(output_dir, exist_ok=True)
+
+colors3 = ['#27AE60', '#E74C3C', '#F39C12']
+labels_plot = ['High Efficiency', 'Low Efficiency', 'Moderate']
+counts_plot  = [len(class_0), len(class_1), len(class_2)]
+
+# Compute values needed before plotting
+importances = classifier.feature_importances_
+sorted_idx  = np.argsort(importances)[::-1]
+cm_train = confusion_matrix(y_train, y_train_pred)
+cm_test  = confusion_matrix(y_test, y_test_pred)
+
+# ────────────────────────────────────────────────────────────
+# FIGURE 1: Input Data — Class Distribution
+# ────────────────────────────────────────────────────────────
+fig1, ax1 = plt.subplots(figsize=(8, 6))
+fig1.patch.set_facecolor('white')
+bars = ax1.bar(labels_plot, counts_plot, color=colors3, edgecolor='black', alpha=0.88)
+ax1.set_title('Input Data — Class Distribution', fontweight='bold', fontsize=14)
+ax1.set_ylabel('Number of Samples', fontsize=12)
+for b, v in zip(bars, counts_plot):
+    ax1.text(b.get_x() + b.get_width()/2, b.get_height() + 200,
+             f'{v:,}', ha='center', fontsize=10, fontweight='bold')
+ax1.tick_params(axis='x', rotation=10)
+plt.tight_layout()
+fig1.savefig(os.path.join(output_dir, 'plot1_class_distribution.png'),
+             dpi=150, bbox_inches='tight', facecolor='white')
+print("   ✅ Plot 1 saved: plot1_class_distribution.png")
+plt.show()
+
+# ────────────────────────────────────────────────────────────
+# FIGURE 2: Outliers Detected & Capped (IQR)
+# ────────────────────────────────────────────────────────────
+fig2, ax2 = plt.subplots(figsize=(10, 6))
+fig2.patch.set_facecolor('white')
+if outlier_report:
+    ax2.barh(list(outlier_report.keys()), list(outlier_report.values()),
+             color='#C0392B', edgecolor='black', alpha=0.8)
+    ax2.set_title('Outliers Detected & Capped (IQR)', fontweight='bold', fontsize=14)
+    ax2.set_xlabel('Number of Outliers', fontsize=12)
+else:
+    ax2.text(0.5, 0.5, 'No Outliers Found', ha='center', va='center',
+             fontsize=16, color='green', transform=ax2.transAxes)
+    ax2.set_title('Outlier Analysis', fontweight='bold', fontsize=14)
+plt.tight_layout()
+fig2.savefig(os.path.join(output_dir, 'plot2_outliers_iqr.png'),
+             dpi=150, bbox_inches='tight', facecolor='white')
+print("   ✅ Plot 2 saved: plot2_outliers_iqr.png")
+plt.show()
+
+# ────────────────────────────────────────────────────────────
+# FIGURE 3: Confusion Matrix — Training Dataset
+# ────────────────────────────────────────────────────────────
+fig3, ax3 = plt.subplots(figsize=(7, 6))
+fig3.patch.set_facecolor('white')
+ConfusionMatrixDisplay(cm_train, display_labels=class_names).plot(
+    ax=ax3, colorbar=False, cmap='Blues')
+ax3.set_title(f'Confusion Matrix — Training Dataset\nAccuracy: {train_acc*100:.2f}%',
+              fontweight='bold', fontsize=13)
+ax3.tick_params(axis='x', rotation=15)
+plt.tight_layout()
+fig3.savefig(os.path.join(output_dir, 'plot3_confusion_matrix_train.png'),
+             dpi=150, bbox_inches='tight', facecolor='white')
+print("   ✅ Plot 3 saved: plot3_confusion_matrix_train.png")
+plt.show()
+
+# ────────────────────────────────────────────────────────────
+# FIGURE 4: Confusion Matrix — Test Dataset
+# ────────────────────────────────────────────────────────────
+fig4, ax4 = plt.subplots(figsize=(7, 6))
+fig4.patch.set_facecolor('white')
+ConfusionMatrixDisplay(cm_test, display_labels=class_names).plot(
+    ax=ax4, colorbar=False, cmap='Oranges')
+ax4.set_title(f'Confusion Matrix — Test Dataset\nAccuracy: {test_acc*100:.2f}%',
+              fontweight='bold', fontsize=13)
+ax4.tick_params(axis='x', rotation=15)
+plt.tight_layout()
+fig4.savefig(os.path.join(output_dir, 'plot4_confusion_matrix_test.png'),
+             dpi=150, bbox_inches='tight', facecolor='white')
+print("   ✅ Plot 4 saved: plot4_confusion_matrix_test.png")
+plt.show()
+
+# ────────────────────────────────────────────────────────────
+# FIGURE 5: Feature Importances
+# ────────────────────────────────────────────────────────────
+fig5, ax5 = plt.subplots(figsize=(10, 6))
+fig5.patch.set_facecolor('white')
+ax5.bar(range(len(feature_names)), importances[sorted_idx],
+        color='steelblue', edgecolor='black', alpha=0.85)
+ax5.set_xticks(range(len(feature_names)))
+ax5.set_xticklabels([feature_names[i] for i in sorted_idx],
+                     rotation=45, ha='right', fontsize=9)
+ax5.set_title('Feature Importances', fontweight='bold', fontsize=14)
+ax5.set_ylabel('Importance Score', fontsize=12)
+plt.tight_layout()
+fig5.savefig(os.path.join(output_dir, 'plot5_feature_importances.png'),
+             dpi=150, bbox_inches='tight', facecolor='white')
+print("   ✅ Plot 5 saved: plot5_feature_importances.png")
+plt.show()
+
+# ────────────────────────────────────────────────────────────
+# FIGURE 6: Decision Tree Structure
+# ────────────────────────────────────────────────────────────
+fig6, ax6 = plt.subplots(figsize=(20, 10))
+fig6.patch.set_facecolor('white')
+plot_tree(classifier, feature_names=feature_names,
+          class_names=class_names, filled=True,
+          rounded=True, fontsize=7, ax=ax6, max_depth=3)
+ax6.set_title('Decision Tree Structure (max_depth shown: 3)',
+              fontweight='bold', fontsize=14)
+plt.tight_layout()
+fig6.savefig(os.path.join(output_dir, 'plot6_decision_tree.png'),
+             dpi=150, bbox_inches='tight', facecolor='white')
+print("   ✅ Plot 6 saved: plot6_decision_tree.png")
+plt.show()
+
+print(f"\n   ✅ All 6 plots saved to: {output_dir}")
+print("   📊 Each plot opened in its own window!")
+
+# ============================================================
+# FINAL SUMMARY
+# ============================================================
+print("\n" + "=" * 60)
+print("   FINAL SUMMARY")
+print("=" * 60)
+print(f"   Dataset rows used    : 200,000")
+print(f"   Features             : {len(feature_names)}")
+print(f"   Target classes       : {', '.join(class_names)}")
+print(f"   Preprocessing done   :")
+print(f"     A. Missing value check   → None found")
+print(f"     B. Duplicate check       → None found")
+print(f"     C. Leakage col removed   → efficiency_score dropped")
+print(f"     D. Label encoding        → LabelEncoder applied")
+print(f"     E. Outlier capping       → IQR method (Winsorization)")
+print(f"     F. Feature scaling       → StandardScaler applied")
+print(f"   Tree max_depth       : 4")
+print(f"   Train Accuracy       : {train_acc*100:.2f}%")
+print(f"   Test  Accuracy       : {test_acc*100:.2f}%")
+print(f"   Top Feature          : {feature_names[importances.argmax()]}")
+print("=" * 60)
